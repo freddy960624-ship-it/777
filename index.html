@@ -1,10 +1,25 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart Posture Monitor</title>
+    <title>智慧坐姿監測 | Smart Posture Monitor</title>
     <style>
+        :root {
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-tertiary: #334155;
+            --accent: #6366f1;
+            --accent-hover: #818cf8;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --border: #334155;
+            --shadow: 0 20px 60px -15px rgba(0, 0, 0, 0.5);
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -12,282 +27,528 @@
         }
 
         body {
-            font-family: 'Arial', sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang TC', 'Microsoft JhengHei', sans-serif;
+            background: radial-gradient(ellipse at top, #1e293b 0%, #0f172a 50%, #020617 100%);
             min-height: 100vh;
+            color: var(--text-primary);
+            padding: 24px;
             display: flex;
             justify-content: center;
             align-items: center;
-            padding: 20px;
         }
 
-        .container {
-            display: flex;
-            background: white;
-            border-radius: 15px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
-            overflow: hidden;
-            max-width: 1000px;
+        .app {
             width: 100%;
+            max-width: 1280px;
+            display: grid;
+            grid-template-columns: 1fr 360px;
+            gap: 24px;
         }
 
-        .video-section {
-            flex: 1;
+        .panel {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            box-shadow: var(--shadow);
+            overflow: hidden;
+        }
+
+        .video-panel {
             position: relative;
+            aspect-ratio: 4 / 3;
             background: #000;
-            min-width: 640px;
             display: flex;
             align-items: center;
             justify-content: center;
-            overflow: hidden;
         }
 
         #video {
             width: 100%;
-            height: auto;
-            display: block;
-            max-width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
         }
 
         #canvas {
             position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            max-width: 100%;
-            max-height: 100%;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            transform: scaleX(-1);
+            pointer-events: none;
         }
 
-        .control-section {
-            flex: 0 0 300px;
-            padding: 30px;
-            background: #f8f9fa;
+        .loading-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.9);
             display: flex;
             flex-direction: column;
-            justify-content: space-between;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            z-index: 10;
+            transition: opacity 0.3s;
         }
 
-        h1 {
-            font-size: 24px;
-            color: #333;
-            margin-bottom: 20px;
-            text-align: center;
+        .loading-overlay.hidden {
+            opacity: 0;
+            pointer-events: none;
         }
 
-        .status-display {
-            background: white;
-            border-radius: 10px;
-            padding: 20px;
-            margin-bottom: 20px;
-            text-align: center;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        .spinner {
+            width: 48px;
+            height: 48px;
+            border: 4px solid var(--bg-tertiary);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
         }
 
-        .status-label {
-            font-size: 16px;
-            color: #666;
-            margin-bottom: 10px;
-            font-weight: bold;
+        @keyframes spin {
+            to { transform: rotate(360deg); }
         }
 
-        .status-value {
-            font-size: 32px;
-            font-weight: bold;
-            color: #667eea;
-            min-height: 40px;
-        }
-
-        .status-value.normal {
-            color: #28a745;
-        }
-
-        .status-value.slouching {
-            color: #dc3545;
-            animation: blink 0.5s infinite;
-        }
-
-        .status-value.calibrating {
-            color: #ffc107;
-        }
-
-        @keyframes blink {
-            0%, 50% { opacity: 1; }
-            51%, 100% { opacity: 0.5; }
-        }
-
-        .stats {
-            background: white;
-            border-radius: 10px;
-            padding: 15px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-        }
-
-        .stat-item {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 10px;
+        .loading-text {
+            color: var(--text-secondary);
             font-size: 14px;
         }
 
-        .stat-item:last-child {
-            margin-bottom: 0;
+        .badge {
+            position: absolute;
+            top: 16px;
+            left: 16px;
+            background: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(10px);
+            padding: 8px 14px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            z-index: 5;
         }
 
+        .badge .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--success);
+            box-shadow: 0 0 8px var(--success);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .status-banner {
+            position: absolute;
+            bottom: 16px;
+            left: 16px;
+            right: 16px;
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(12px);
+            padding: 16px 20px;
+            border-radius: 14px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            transition: all 0.3s;
+            z-index: 5;
+        }
+
+        .status-banner.normal {
+            border-color: var(--success);
+            background: rgba(16, 185, 129, 0.15);
+        }
+
+        .status-banner.slouching {
+            border-color: var(--danger);
+            background: rgba(239, 68, 68, 0.15);
+            animation: shake 0.4s;
+        }
+
+        .status-banner.warning {
+            border-color: var(--warning);
+            background: rgba(245, 158, 11, 0.15);
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-4px); }
+            75% { transform: translateX(4px); }
+        }
+
+        .status-text {
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .status-icon {
+            font-size: 24px;
+        }
+
+        .control-panel {
+            padding: 28px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .header h1 {
+            font-size: 22px;
+            font-weight: 700;
+            margin-bottom: 4px;
+            background: linear-gradient(135deg, #6366f1 0%, #a78bfa 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header p {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .calibration-status {
+            background: var(--bg-tertiary);
+            padding: 14px 16px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 13px;
+        }
+
+        .calibration-status .label {
+            color: var(--text-secondary);
+        }
+
+        .calibration-status .value {
+            font-weight: 600;
+            color: var(--warning);
+        }
+
+        .calibration-status.calibrated .value {
+            color: var(--success);
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .stat-card {
+            background: var(--bg-tertiary);
+            padding: 16px;
+            border-radius: 12px;
+            border: 1px solid transparent;
+            transition: border-color 0.2s;
+        }
+
+        .stat-card.good { border-color: rgba(16, 185, 129, 0.3); }
+        .stat-card.bad { border-color: rgba(239, 68, 68, 0.3); }
+
         .stat-label {
-            color: #666;
+            font-size: 11px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
         }
 
         .stat-value {
-            font-weight: bold;
-            color: #333;
+            font-size: 24px;
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .stat-value.good { color: var(--success); }
+        .stat-value.bad { color: var(--danger); }
+
+        .stat-unit {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-left: 4px;
+            font-weight: 400;
+        }
+
+        .progress-bar {
+            background: var(--bg-tertiary);
+            border-radius: 12px;
+            overflow: hidden;
+            height: 8px;
+            position: relative;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--success), #34d399);
+            transition: width 0.5s ease;
+            border-radius: 12px;
+        }
+
+        .accuracy-display {
+            text-align: center;
+            padding: 8px 0;
+        }
+
+        .accuracy-label {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+        }
+
+        .accuracy-value {
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            font-variant-numeric: tabular-nums;
         }
 
         .buttons {
             display: flex;
             flex-direction: column;
             gap: 10px;
+            margin-top: auto;
         }
 
-        button {
-            padding: 12px;
+        .btn {
+            padding: 14px 18px;
             border: none;
-            border-radius: 8px;
+            border-radius: 12px;
             font-size: 14px;
-            font-weight: bold;
+            font-weight: 600;
             cursor: pointer;
-            transition: all 0.3s ease;
-            width: 100%;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            font-family: inherit;
         }
 
-        .btn-calibrate {
-            background: #667eea;
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent) 0%, #8b5cf6 100%);
             color: white;
         }
 
-        .btn-calibrate:hover {
-            background: #5568d3;
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 8px 20px -4px rgba(99, 102, 241, 0.5);
         }
 
-        .btn-calibrate:active {
+        .btn-secondary {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            background: #475569;
+        }
+
+        .btn-ghost {
+            background: transparent;
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+        }
+
+        .btn-ghost:hover {
+            color: var(--text-primary);
+            border-color: var(--text-secondary);
+        }
+
+        .btn:active {
             transform: translateY(0);
         }
 
-        .btn-report {
-            background: #28a745;
-            color: white;
-        }
-
-        .btn-report:hover {
-            background: #218838;
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(40, 167, 69, 0.4);
-        }
-
-        .btn-report:active {
-            transform: translateY(0);
-        }
-
-        .btn-reset {
-            background: #6c757d;
-            color: white;
-        }
-
-        .btn-reset:hover {
-            background: #5a6268;
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(108, 117, 125, 0.4);
-        }
-
-        button:disabled {
+        .btn:disabled {
             opacity: 0.5;
             cursor: not-allowed;
         }
 
-        .info-text {
+        .tip {
             font-size: 12px;
-            color: #999;
+            color: var(--text-secondary);
             text-align: center;
-            margin-top: 10px;
+            padding: 8px;
+            background: rgba(99, 102, 241, 0.08);
+            border-radius: 8px;
+            border: 1px solid rgba(99, 102, 241, 0.2);
         }
 
-        .warning {
-            background: #fff3cd;
-            border: 1px solid #ffc107;
-            color: #856404;
-            padding: 10px;
-            border-radius: 5px;
-            margin-bottom: 10px;
-            font-size: 12px;
+        /* Report modal */
+        .modal-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(8px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            padding: 20px;
         }
 
-        @media (max-width: 768px) {
-            .container {
-                flex-direction: column;
-            }
+        .modal-backdrop.active {
+            display: flex;
+        }
 
-            .video-section {
-                min-width: 100%;
-            }
+        .modal {
+            background: var(--bg-secondary);
+            border-radius: 20px;
+            padding: 32px;
+            max-width: 480px;
+            width: 100%;
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow);
+        }
 
-            .control-section {
-                flex: 1;
+        .modal h2 {
+            font-size: 20px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .report-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .report-advice {
+            background: var(--bg-tertiary);
+            padding: 16px;
+            border-radius: 12px;
+            text-align: center;
+            margin-bottom: 20px;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        @media (max-width: 900px) {
+            .app {
+                grid-template-columns: 1fr;
             }
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="video-section">
-            <video id="video" autoplay playsinline muted style="width: 100%; height: auto; display: block;"></video>
+    <div class="app">
+        <div class="panel video-panel">
+            <video id="video" autoplay playsinline muted></video>
             <canvas id="canvas"></canvas>
+
+            <div class="badge">
+                <span class="dot" id="liveDot"></span>
+                <span id="fpsCounter">LIVE</span>
+            </div>
+
+            <div class="loading-overlay" id="loadingOverlay">
+                <div class="spinner"></div>
+                <div class="loading-text" id="loadingText">載入 AI 模型中...</div>
+            </div>
+
+            <div class="status-banner" id="statusBanner">
+                <div>
+                    <div class="status-text" id="statusText">準備中...</div>
+                </div>
+                <div class="status-icon" id="statusIcon">⏳</div>
+            </div>
         </div>
-        <div class="control-section">
+
+        <div class="panel control-panel">
+            <div class="header">
+                <h1>智慧坐姿監測</h1>
+                <p>AI 即時偵測 · 保護您的脊椎健康</p>
+            </div>
+
+            <div class="calibration-status" id="calibrationCard">
+                <span class="label">校準狀態</span>
+                <span class="value" id="calibrationStatus">未校準</span>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card good">
+                    <div class="stat-label">良好姿勢</div>
+                    <div class="stat-value good">
+                        <span id="normalTime">0</span><span class="stat-unit">秒</span>
+                    </div>
+                </div>
+                <div class="stat-card bad">
+                    <div class="stat-label">駝背時間</div>
+                    <div class="stat-value bad">
+                        <span id="slouchTime">0</span><span class="stat-unit">秒</span>
+                    </div>
+                </div>
+            </div>
+
             <div>
-                <h1>姿态检测</h1>
-                
-                <div class="warning" id="warning" style="display: none;">
-                    ⚠️ 请允许网页使用您的摄像头
+                <div class="accuracy-display">
+                    <div class="accuracy-label">姿勢分數</div>
+                    <div class="accuracy-value" id="accuracyValue">--</div>
                 </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+                </div>
+            </div>
 
-                <div class="status-display">
-                    <div class="status-label">当前状态</div>
-                    <div class="status-value" id="statusValue">初始化中...</div>
-                </div>
+            <div class="tip" id="tip">
+                💡 請坐直後點擊「開始校準」設定基準
+            </div>
 
-                <div class="stats">
-                    <div class="stat-item">
-                        <span class="stat-label">已校准：</span>
-                        <span class="stat-value" id="calibrationStatus">未校准</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">好姿态：</span>
-                        <span class="stat-value" id="normalTime">0 秒</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">驼背：</span>
-                        <span class="stat-value" id="slouchTime">0 秒</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">准确度：</span>
-                        <span class="stat-value" id="accuracy">0%</span>
-                    </div>
-                </div>
-
-                <div class="buttons">
-                    <button class="btn-calibrate" id="calibrateBtn">校准姿态</button>
-                    <button class="btn-report" id="reportBtn">生成报告</button>
-                    <button class="btn-reset" id="resetBtn">重置数据</button>
-                </div>
-
-                <div class="info-text">
-                    💡 请坐直后点击「校准姿态」开始检测
-                </div>
+            <div class="buttons">
+                <button class="btn btn-primary" id="calibrateBtn">
+                    <span>🎯</span> 開始校準
+                </button>
+                <button class="btn btn-secondary" id="reportBtn">
+                    <span>📊</span> 生成報告
+                </button>
+                <button class="btn btn-ghost" id="resetBtn">
+                    <span>🔄</span> 重置數據
+                </button>
             </div>
         </div>
     </div>
+
+    <div class="modal-backdrop" id="reportModal">
+        <div class="modal">
+            <h2>📊 姿勢健康報告</h2>
+            <div class="report-stats">
+                <div class="stat-card good">
+                    <div class="stat-label">良好姿勢</div>
+                    <div class="stat-value good">
+                        <span id="reportNormal">0</span><span class="stat-unit">秒</span>
+                    </div>
+                </div>
+                <div class="stat-card bad">
+                    <div class="stat-label">駝背時間</div>
+                    <div class="stat-value bad">
+                        <span id="reportSlouch">0</span><span class="stat-unit">秒</span>
+                    </div>
+                </div>
+            </div>
+            <div class="accuracy-display">
+                <div class="accuracy-label">總體姿勢分數</div>
+                <div class="accuracy-value" id="reportAccuracy">0%</div>
+            </div>
+            <div class="report-advice" id="reportAdvice"></div>
+            <button class="btn btn-primary" onclick="document.getElementById('reportModal').classList.remove('active')">
+                關閉
+            </button>
+        </div>
+    </div>
+
+    <!-- MediaPipe Face Detection -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection@0.4/face_detection.js" crossorigin="anonymous"></script>
 
     <script>
         class PostureMonitor {
@@ -295,400 +556,311 @@
                 this.video = document.getElementById('video');
                 this.canvas = document.getElementById('canvas');
                 this.ctx = this.canvas.getContext('2d');
-                
-                this.calibratedNoseY = null;
-                this.records = [];
+
+                this.calibratedY = null;
+                this.slouchThreshold = 35;
+                this.records = { normal: 0, slouch: 0 };
                 this.lastRecordTime = 0;
                 this.slouchStartTime = null;
-                this.isRunning = false;
-                
-                this.setupEventListeners();
-                this.startCamera();
+                this.lastDetection = null;
+                this.noDetectionFrames = 0;
+                this.fps = 0;
+                this.frameCount = 0;
+                this.lastFpsTime = performance.now();
+
+                this.smoothedY = null;
+                this.smoothingFactor = 0.3;
+
+                this.bindUI();
+                this.init();
             }
 
-            setupEventListeners() {
-                document.getElementById('calibrateBtn').addEventListener('click', () => this.calibrate());
-                document.getElementById('reportBtn').addEventListener('click', () => this.generateReport());
-                document.getElementById('resetBtn').addEventListener('click', () => this.resetData());
+            bindUI() {
+                document.getElementById('calibrateBtn').onclick = () => this.calibrate();
+                document.getElementById('reportBtn').onclick = () => this.showReport();
+                document.getElementById('resetBtn').onclick = () => this.reset();
+            }
+
+            async init() {
+                try {
+                    this.setLoading('啟動攝影機...');
+                    await this.startCamera();
+
+                    this.setLoading('載入 AI 模型...');
+                    await this.loadModel();
+
+                    this.hideLoading();
+                    this.setStatus('請點擊校準開始', 'warning', '🎯');
+                    this.detectLoop();
+                } catch (err) {
+                    console.error('初始化失敗:', err);
+                    this.setLoading('❌ ' + err.message);
+                }
             }
 
             async startCamera() {
-                try {
-                    this.updateStatus('请求摄像头访问...', 'loading');
-                    
-                    const constraints = {
-                        video: {
-                            width: { ideal: 640 },
-                            height: { ideal: 480 },
-                            facingMode: 'user'
-                        },
-                        audio: false
-                    };
-
-                    const stream = await navigator.mediaDevices.getUserMedia(constraints);
-                    console.log('摄像头已连接');
-                    
-                    this.video.srcObject = stream;
-                    this.video.play().catch(e => console.error('视频播放失败:', e));
-                    
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        width: { ideal: 640 },
+                        height: { ideal: 480 },
+                        facingMode: 'user'
+                    },
+                    audio: false
+                });
+                this.video.srcObject = stream;
+                await new Promise(resolve => {
                     this.video.onloadedmetadata = () => {
-                        console.log('视频元数据已加载');
                         this.canvas.width = this.video.videoWidth;
                         this.canvas.height = this.video.videoHeight;
-                        console.log(`画布大小: ${this.canvas.width}x${this.canvas.height}`);
-                        this.isRunning = true;
-                        this.updateStatus('摄像头已连接', 'ready');
-                        this.detectPose();
+                        resolve();
                     };
+                });
+            }
 
-                    this.video.onerror = (error) => {
-                        console.error('视频错误:', error);
-                        this.updateStatus('视频错误', 'error');
-                    };
+            async loadModel() {
+                this.faceDetection = new FaceDetection({
+                    locateFile: (file) =>
+                        `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection@0.4/${file}`
+                });
+                this.faceDetection.setOptions({
+                    model: 'short',
+                    minDetectionConfidence: 0.5
+                });
+                this.faceDetection.onResults((results) => this.onResults(results));
+                await this.faceDetection.initialize();
+            }
 
-                } catch (error) {
-                    console.error('摄像头访问被拒绝:', error);
-                    document.getElementById('warning').style.display = 'block';
-                    this.updateStatus('⚠️ 摄像头访问被拒绝', 'error');
-                    alert('请在浏览器设置中允许摄像头访问');
+            async detectLoop() {
+                if (this.video.readyState >= 2) {
+                    await this.faceDetection.send({ image: this.video });
+                    this.updateFps();
+                }
+                requestAnimationFrame(() => this.detectLoop());
+            }
+
+            updateFps() {
+                this.frameCount++;
+                const now = performance.now();
+                if (now - this.lastFpsTime >= 1000) {
+                    this.fps = this.frameCount;
+                    this.frameCount = 0;
+                    this.lastFpsTime = now;
+                    document.getElementById('fpsCounter').textContent = `LIVE · ${this.fps} FPS`;
                 }
             }
 
-            async loadPoseNet() {
-                try {
-                    console.log('加载模型中...');
-                    this.updateStatus('准备就绪 ✓', 'ready');
-                } catch (error) {
-                    console.error('模型加载失败:', error);
-                    this.updateStatus('模型加载失败', 'error');
-                }
-            }
+            onResults(results) {
+                this.ctx.save();
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
-            async detectPose() {
-                if (!this.isRunning) {
-                    requestAnimationFrame(() => this.detectPose());
+                if (!results.detections || results.detections.length === 0) {
+                    this.noDetectionFrames++;
+                    if (this.noDetectionFrames > 10) {
+                        this.setStatus('未偵測到人像', 'warning', '👤');
+                        this.lastDetection = null;
+                        this.smoothedY = null;
+                    }
+                    this.ctx.restore();
                     return;
                 }
 
-                try {
-                    // 检查视频是否有可用数据
-                    if (this.video.readyState === this.video.HAVE_ENOUGH_DATA) {
-                        // 绘制视频到画布
-                        this.ctx.drawImage(this.video, 0, 0, this.canvas.width, this.canvas.height);
+                this.noDetectionFrames = 0;
 
-                        // 头部检测
-                        const head = this.detectHead();
-
-                        if (head) {
-                            this.drawHead(head);
-                            this.checkPosture(head);
-                        } else {
-                            if (this.calibratedNoseY !== null) {
-                                this.updateStatus('未检测到人', 'no-person');
-                            }
-                        }
-                    }
-                } catch (error) {
-                    console.error('检测错误:', error);
-                }
-
-                requestAnimationFrame(() => this.detectPose());
-            }
-
-            detectHead() {
-                // 改进的头部检测 - 基于多种肤色和亮度检测
-                const imageData = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
-                const data = imageData.data;
-                const width = imageData.width;
-                const height = imageData.height;
-
-                // 寻找肤色区域 - 使用更宽松的阈值
-                const skinPixels = [];
-                
-                for (let i = 0; i < data.length; i += 4) {
-                    const r = data[i];
-                    const g = data[i + 1];
-                    const b = data[i + 2];
-                    const a = data[i + 3];
-                    
-                    // 跳过透明像素
-                    if (a < 200) continue;
-                    
-                    // 改进的肤色检测 - 更宽松
-                    if (this.isSkinColor(r, g, b)) {
-                        skinPixels.push(i / 4);
-                    }
-                }
-
-                // 如果肤色检测太少，尝试检测亮度较高的区域（可能是脸部）
-                if (skinPixels.length < 50) {
-                    for (let i = 0; i < data.length; i += 4) {
-                        const r = data[i];
-                        const g = data[i + 1];
-                        const b = data[i + 2];
-                        const brightness = (r + g + b) / 3;
-                        
-                        // 检测相对亮的区域
-                        if (brightness > 80 && brightness < 220) {
-                            skinPixels.push(i / 4);
-                        }
-                    }
-                }
-
-                if (skinPixels.length < 200) {
-                    return null;
-                }
-
-                // 计算边界框
-                let minX = width, maxX = 0, minY = height, maxY = 0;
-                skinPixels.forEach(pixelIndex => {
-                    const x = pixelIndex % width;
-                    const y = Math.floor(pixelIndex / width);
-                    minX = Math.min(minX, x);
-                    maxX = Math.max(maxX, x);
-                    minY = Math.min(minY, y);
-                    maxY = Math.max(maxY, y);
+                // largest detection
+                const detection = results.detections.reduce((a, b) => {
+                    const aSize = a.boundingBox.width * a.boundingBox.height;
+                    const bSize = b.boundingBox.width * b.boundingBox.height;
+                    return aSize > bSize ? a : b;
                 });
 
-                const w = maxX - minX;
-                const h = maxY - minY;
+                const bbox = detection.boundingBox;
+                const w = bbox.width * this.canvas.width;
+                const h = bbox.height * this.canvas.height;
+                const x = (bbox.xCenter * this.canvas.width) - w / 2;
+                const y = (bbox.yCenter * this.canvas.height) - h / 2;
+                const centerY = bbox.yCenter * this.canvas.height;
 
-                // 检查边界框大小是否合理（放宽条件）
-                if (w > 20 && h > 30 && w < width && h < height && w / h > 0.3 && w / h < 3) {
-                    return {
-                        x: minX,
-                        y: minY,
-                        w: w,
-                        h: h,
-                        centerY: minY + h / 2
-                    };
+                // smooth Y to avoid jitter
+                if (this.smoothedY === null) {
+                    this.smoothedY = centerY;
+                } else {
+                    this.smoothedY = this.smoothedY * (1 - this.smoothingFactor) + centerY * this.smoothingFactor;
                 }
 
-                return null;
+                this.lastDetection = { x, y, w, h, centerY: this.smoothedY };
+                this.draw(this.lastDetection);
+                this.evaluate(this.smoothedY);
+
+                this.ctx.restore();
             }
 
-            isSkinColor(r, g, b) {
-                // 非常宽松的肤色检测 - 支持各种肤色
-                // 基于多个条件的组合判断
-                
-                // 条件1：基本亮度范围
-                const brightness = (r + g + b) / 3;
-                if (brightness < 40 || brightness > 240) return false;
-                
-                // 条件2：红通道通常是最强的
-                const rg = r - g;
-                const rb = r - b;
-                
-                // 宽松的肤色范围
-                if (r > 50 && g > 30 && b > 20) {
-                    // 红色偏高
-                    if (rg > -20 && rb > -20) {
-                        return true;
-                    }
-                }
-                
-                // 条件3：寻找较为均匀的颜色（典型肤色特征）
-                if (r > 40 && g > 30 && b > 20) {
-                    const variance = Math.abs(r - g) + Math.abs(g - b) + Math.abs(r - b);
-                    if (variance < 100) {
-                        return true;
-                    }
-                }
-                
-                // 条件4：非常浅的颜色（可能是脸部高光）
-                if (r > 180 && g > 140 && b > 100) {
-                    return true;
-                }
-                
-                return false;
-            }
+            draw(d) {
+                const isSlouching = this.calibratedY !== null &&
+                    (d.centerY - this.calibratedY) > this.slouchThreshold;
 
-            drawHead(head) {
-                // 清除画布
-                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-                
-                // 重新绘制视频
-                this.ctx.drawImage(this.video, 0, 0, this.canvas.width, this.canvas.height);
-
-                // 绘制校准线（蓝色）
-                if (this.calibratedNoseY !== null) {
-                    this.ctx.strokeStyle = '#0000FF';
-                    this.ctx.lineWidth = 3;
+                // baseline (mirrored draw - already mirrored via CSS)
+                if (this.calibratedY !== null) {
+                    this.ctx.strokeStyle = '#6366f1';
+                    this.ctx.lineWidth = 2;
+                    this.ctx.setLineDash([8, 6]);
                     this.ctx.beginPath();
-                    this.ctx.moveTo(0, this.calibratedNoseY);
-                    this.ctx.lineTo(this.canvas.width, this.calibratedNoseY);
+                    this.ctx.moveTo(0, this.calibratedY);
+                    this.ctx.lineTo(this.canvas.width, this.calibratedY);
                     this.ctx.stroke();
-
-                    // 绘制文字标签
-                    this.ctx.fillStyle = '#0000FF';
-                    this.ctx.font = 'bold 16px Arial';
-                    this.ctx.fillText('基准线', 10, this.calibratedNoseY - 10);
+                    this.ctx.setLineDash([]);
                 }
 
-                // 绘制头部中心线（黄色）
-                this.ctx.strokeStyle = '#FFFF00';
-                this.ctx.lineWidth = 2;
+                // current center
+                this.ctx.strokeStyle = isSlouching ? '#ef4444' : '#10b981';
+                this.ctx.lineWidth = 3;
                 this.ctx.beginPath();
-                this.ctx.moveTo(head.x, head.centerY);
-                this.ctx.lineTo(head.x + head.w, head.centerY);
+                this.ctx.moveTo(d.x, d.centerY);
+                this.ctx.lineTo(d.x + d.w, d.centerY);
                 this.ctx.stroke();
 
-                // 绘制头部框（绿色或红色）
+                // bounding box
+                this.ctx.strokeStyle = isSlouching ? '#ef4444' : '#10b981';
                 this.ctx.lineWidth = 3;
-                if (this.calibratedNoseY !== null && 
-                    (head.centerY - this.calibratedNoseY) > 20) {
-                    this.ctx.strokeStyle = '#FF0000'; // 驼背时为红色
-                } else {
-                    this.ctx.strokeStyle = '#00FF00'; // 正常时为绿色
-                }
-                this.ctx.strokeRect(head.x, head.y, head.w, head.h);
+                this.ctx.strokeRect(d.x, d.y, d.w, d.h);
+
+                // corner accents
+                const cornerLen = 14;
+                this.ctx.lineWidth = 4;
+                this.ctx.beginPath();
+                // TL
+                this.ctx.moveTo(d.x, d.y + cornerLen); this.ctx.lineTo(d.x, d.y); this.ctx.lineTo(d.x + cornerLen, d.y);
+                // TR
+                this.ctx.moveTo(d.x + d.w - cornerLen, d.y); this.ctx.lineTo(d.x + d.w, d.y); this.ctx.lineTo(d.x + d.w, d.y + cornerLen);
+                // BL
+                this.ctx.moveTo(d.x, d.y + d.h - cornerLen); this.ctx.lineTo(d.x, d.y + d.h); this.ctx.lineTo(d.x + cornerLen, d.y + d.h);
+                // BR
+                this.ctx.moveTo(d.x + d.w - cornerLen, d.y + d.h); this.ctx.lineTo(d.x + d.w, d.y + d.h); this.ctx.lineTo(d.x + d.w, d.y + d.h - cornerLen);
+                this.ctx.stroke();
             }
 
-            checkPosture(head) {
-                if (this.calibratedNoseY === null) {
-                    this.updateStatus('需要校准', 'calibrating');
+            evaluate(centerY) {
+                if (this.calibratedY === null) {
+                    this.setStatus('請進行校準', 'warning', '🎯');
                     return;
                 }
 
-                const slouchThreshold = 20;
-                if ((head.centerY - this.calibratedNoseY) > slouchThreshold) {
-                    this.recordStatus('Slouching');
-                    
+                const drop = centerY - this.calibratedY;
+
+                if (drop > this.slouchThreshold) {
                     if (this.slouchStartTime === null) {
-                        this.slouchStartTime = Date.now();
-                    } else if (Date.now() - this.slouchStartTime > 2000) {
-                        this.updateStatus('警告：驼背！', 'slouching');
-                        document.body.style.background = 
-                            'linear-gradient(135deg, #dc3545 0%, #c82333 100%)';
-                        return;
+                        this.slouchStartTime = performance.now();
                     }
-                    this.updateStatus('驼背中', 'slouching');
+                    const slouchDuration = (performance.now() - this.slouchStartTime) / 1000;
+
+                    if (slouchDuration > 2) {
+                        this.setStatus(`駝背警告 (${slouchDuration.toFixed(0)}s)`, 'slouching', '⚠️');
+                    } else {
+                        this.setStatus('姿勢偏離', 'warning', '👀');
+                    }
+                    this.recordStatus('slouch');
                 } else {
                     this.slouchStartTime = null;
-                    document.body.style.background = 
-                        'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
-                    this.recordStatus('Normal');
-                    this.updateStatus('姿态良好', 'normal');
+                    this.setStatus('姿勢良好', 'normal', '✅');
+                    this.recordStatus('normal');
                 }
 
                 this.updateStats();
             }
 
-            calibrate() {
-                const statusValue = document.getElementById('statusValue');
-                statusValue.textContent = '正在扫描中...';
-                
-                let foundHead = false;
-                let attempts = 0;
-                const maxAttempts = 30; // 尝试最多30帧
-                
-                const tryCalibrate = () => {
-                    if (attempts >= maxAttempts) {
-                        if (!foundHead) {
-                            statusValue.textContent = '校准失败！请确保能看到您的脸';
-                            statusValue.className = 'status-value';
-                            alert('未能检测到您的脸部。请确保：\n1. 光线充足\n2. 脸部完全在摄像头框内\n3. 摄像头有效');
-                        }
-                        return;
-                    }
-
-                    if (this.video.readyState === this.video.HAVE_ENOUGH_DATA) {
-                        this.ctx.drawImage(this.video, 0, 0, this.canvas.width, this.canvas.height);
-                        const head = this.detectHead();
-                        
-                        if (head) {
-                            foundHead = true;
-                            this.calibratedNoseY = head.centerY;
-                            document.getElementById('calibrationStatus').textContent = '已校准 ✓';
-                            statusValue.textContent = '校准完成！可以开始了';
-                            statusValue.className = 'status-value normal';
-                            console.log('校准成功，基准线Y:', this.calibratedNoseY);
-                            return;
-                        }
-                    }
-                    
-                    attempts++;
-                    setTimeout(tryCalibrate, 100);
-                };
-                
-                tryCalibrate();
-            }
-
-            recordStatus(status) {
-                const currentTime = Date.now();
-                if ((currentTime - this.lastRecordTime) >= 1000) {
-                    this.records.push({
-                        time: currentTime,
-                        status: status
-                    });
-                    this.lastRecordTime = currentTime;
+            recordStatus(type) {
+                const now = performance.now();
+                if (now - this.lastRecordTime >= 1000) {
+                    this.records[type]++;
+                    this.lastRecordTime = now;
                 }
-            }
-
-            updateStatus(text, status) {
-                const statusValue = document.getElementById('statusValue');
-                statusValue.textContent = text;
-                statusValue.className = `status-value ${status}`;
             }
 
             updateStats() {
-                const normalCount = this.records.filter(r => r.status === 'Normal').length;
-                const slouchCount = this.records.filter(r => r.status === 'Slouching').length;
-                const total = normalCount + slouchCount;
+                document.getElementById('normalTime').textContent = this.records.normal;
+                document.getElementById('slouchTime').textContent = this.records.slouch;
 
-                document.getElementById('normalTime').textContent = `${normalCount} 秒`;
-                document.getElementById('slouchTime').textContent = `${slouchCount} 秒`;
-                
-                const accuracy = total > 0 ? 
-                    Math.round((normalCount / total) * 100) : 0;
-                document.getElementById('accuracy').textContent = `${accuracy}%`;
+                const total = this.records.normal + this.records.slouch;
+                const accuracy = total > 0 ? Math.round((this.records.normal / total) * 100) : 0;
+                document.getElementById('accuracyValue').textContent = total > 0 ? `${accuracy}%` : '--';
+                document.getElementById('progressFill').style.width = `${accuracy}%`;
+
+                // colour transition for progress
+                const fill = document.getElementById('progressFill');
+                if (accuracy >= 80) {
+                    fill.style.background = 'linear-gradient(90deg, var(--success), #34d399)';
+                } else if (accuracy >= 50) {
+                    fill.style.background = 'linear-gradient(90deg, var(--warning), #fbbf24)';
+                } else {
+                    fill.style.background = 'linear-gradient(90deg, var(--danger), #f87171)';
+                }
             }
 
-            generateReport() {
-                const normalCount = this.records.filter(r => r.status === 'Normal').length;
-                const slouchCount = this.records.filter(r => r.status === 'Slouching').length;
-                const total = normalCount + slouchCount;
-
-                if (total === 0) {
-                    alert('暂无数据，请先进行姿态检测');
+            calibrate() {
+                if (!this.lastDetection) {
+                    this.setStatus('未偵測到人臉，請對準鏡頭', 'warning', '⚠️');
                     return;
                 }
-
-                const accuracy = ((normalCount / total) * 100).toFixed(1);
-                const advice = accuracy > 80 ? 
-                    '💪 很棒！请继续保持！' : 
-                    '⚠️ 请坐直身体！';
-
-                const report = `
-━━━━━━━━━━ 姿态报告 ━━━━━━━━━━
-✓ 良好姿态: ${normalCount} 秒 (${accuracy}%)
-✗ 驼背时间: ${slouchCount} 秒 (${(100 - accuracy).toFixed(1)}%)
-─────────────────────
-${advice}
-━━━━━━━━━━━━━━━━━━━━
-                `;
-
-                alert(report);
+                this.calibratedY = this.lastDetection.centerY;
+                const card = document.getElementById('calibrationCard');
+                card.classList.add('calibrated');
+                document.getElementById('calibrationStatus').textContent = '已校準 ✓';
+                document.getElementById('tip').innerHTML = '✨ 校準完成！系統會自動監測您的姿勢';
+                this.setStatus('校準成功', 'normal', '✅');
             }
 
-            resetData() {
-                if (confirm('确定要重置所有数据吗？')) {
-                    this.records = [];
-                    this.calibratedNoseY = null;
-                    this.slouchStartTime = null;
-                    document.getElementById('normalTime').textContent = '0 秒';
-                    document.getElementById('slouchTime').textContent = '0 秒';
-                    document.getElementById('accuracy').textContent = '0%';
-                    document.getElementById('calibrationStatus').textContent = '未校准';
-                    this.updateStatus('已重置', 'ready');
+            setStatus(text, type, icon) {
+                const banner = document.getElementById('statusBanner');
+                document.getElementById('statusText').textContent = text;
+                document.getElementById('statusIcon').textContent = icon;
+                banner.className = `status-banner ${type}`;
+            }
+
+            setLoading(text) {
+                document.getElementById('loadingOverlay').classList.remove('hidden');
+                document.getElementById('loadingText').textContent = text;
+            }
+
+            hideLoading() {
+                document.getElementById('loadingOverlay').classList.add('hidden');
+            }
+
+            showReport() {
+                const total = this.records.normal + this.records.slouch;
+                if (total === 0) {
+                    alert('尚無數據，請先進行姿勢偵測');
+                    return;
                 }
+                const accuracy = (this.records.normal / total) * 100;
+
+                document.getElementById('reportNormal').textContent = this.records.normal;
+                document.getElementById('reportSlouch').textContent = this.records.slouch;
+                document.getElementById('reportAccuracy').textContent = `${accuracy.toFixed(1)}%`;
+
+                let advice;
+                if (accuracy >= 90) advice = '🏆 完美！您的坐姿堪稱典範，請繼續保持！';
+                else if (accuracy >= 75) advice = '👍 不錯！偶爾的駝背要注意，整體表現良好。';
+                else if (accuracy >= 50) advice = '⚠️ 需要改善！請更注意挺直背部，避免久坐。';
+                else advice = '🚨 警告！長時間駝背會傷害脊椎，請立即調整姿勢並休息。';
+
+                document.getElementById('reportAdvice').textContent = advice;
+                document.getElementById('reportModal').classList.add('active');
+            }
+
+            reset() {
+                if (!confirm('確定要重置所有數據與校準嗎？')) return;
+                this.records = { normal: 0, slouch: 0 };
+                this.calibratedY = null;
+                this.smoothedY = null;
+                this.slouchStartTime = null;
+                document.getElementById('calibrationCard').classList.remove('calibrated');
+                document.getElementById('calibrationStatus').textContent = '未校準';
+                document.getElementById('tip').innerHTML = '💡 請坐直後點擊「開始校準」設定基準';
+                this.updateStats();
+                this.setStatus('已重置', 'warning', '🔄');
             }
         }
 
-        // 页面加载完成后启动
-        window.addEventListener('load', () => {
-            new PostureMonitor();
-        });
+        window.addEventListener('load', () => new PostureMonitor());
     </script>
 </body>
 </html>
