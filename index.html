@@ -4,9 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Smart Posture Monitor</title>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.0.0"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/body-pix@2.2.0"></script>
     <style>
         * {
             margin: 0;
@@ -39,20 +36,26 @@
             position: relative;
             background: #000;
             min-width: 640px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
         }
 
         #video {
             width: 100%;
             height: auto;
             display: block;
+            max-width: 100%;
         }
 
         #canvas {
             position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            max-width: 100%;
+            max-height: 100%;
         }
 
         .control-section {
@@ -238,7 +241,7 @@
 <body>
     <div class="container">
         <div class="video-section">
-            <video id="video" playsinline></video>
+            <video id="video" autoplay playsinline muted style="width: 100%; height: auto; display: block;"></video>
             <canvas id="canvas"></canvas>
         </div>
         <div class="control-section">
@@ -311,34 +314,50 @@
 
             async startCamera() {
                 try {
-                    const stream = await navigator.mediaDevices.getUserMedia({
-                        video: { width: 640, height: 480 },
+                    this.updateStatus('请求摄像头访问...', 'loading');
+                    
+                    const constraints = {
+                        video: {
+                            width: { ideal: 640 },
+                            height: { ideal: 480 },
+                            facingMode: 'user'
+                        },
                         audio: false
-                    });
+                    };
+
+                    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                    console.log('摄像头已连接');
+                    
                     this.video.srcObject = stream;
+                    this.video.play().catch(e => console.error('视频播放失败:', e));
                     
                     this.video.onloadedmetadata = () => {
+                        console.log('视频元数据已加载');
                         this.canvas.width = this.video.videoWidth;
                         this.canvas.height = this.video.videoHeight;
+                        console.log(`画布大小: ${this.canvas.width}x${this.canvas.height}`);
                         this.isRunning = true;
-                        this.loadPoseNet();
+                        this.updateStatus('摄像头已连接', 'ready');
+                        this.detectPose();
                     };
+
+                    this.video.onerror = (error) => {
+                        console.error('视频错误:', error);
+                        this.updateStatus('视频错误', 'error');
+                    };
+
                 } catch (error) {
                     console.error('摄像头访问被拒绝:', error);
                     document.getElementById('warning').style.display = 'block';
-                    this.updateStatus('摄像头访问被拒绝', 'error');
+                    this.updateStatus('⚠️ 摄像头访问被拒绝', 'error');
+                    alert('请在浏览器设置中允许摄像头访问');
                 }
             }
 
             async loadPoseNet() {
                 try {
-                    // 使用轻量级的姿态检测模型
-                    await tf.ready();
-                    this.updateStatus('模型加载中...', 'loading');
-                    setTimeout(() => {
-                        this.updateStatus('准备就绪', 'ready');
-                        this.detectPose();
-                    }, 1000);
+                    console.log('加载模型中...');
+                    this.updateStatus('准备就绪 ✓', 'ready');
                 } catch (error) {
                     console.error('模型加载失败:', error);
                     this.updateStatus('模型加载失败', 'error');
@@ -346,35 +365,42 @@
             }
 
             async detectPose() {
-                if (!this.isRunning || !this.video.readyState === this.video.HAVE_ENOUGH_DATA) {
+                if (!this.isRunning) {
                     requestAnimationFrame(() => this.detectPose());
                     return;
                 }
 
-                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-                this.ctx.drawImage(this.video, 0, 0, this.canvas.width, this.canvas.height);
+                try {
+                    // 检查视频是否有可用数据
+                    if (this.video.readyState === this.video.HAVE_ENOUGH_DATA) {
+                        // 绘制视频到画布
+                        this.ctx.drawImage(this.video, 0, 0, this.canvas.width, this.canvas.height);
 
-                // 简单的头部检测（基于面部特征）
-                const imageData = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
-                const head = this.detectHead(imageData);
+                        // 简单的头部检测
+                        const head = this.detectHead();
 
-                if (head) {
-                    this.drawHead(head);
-                    this.checkPosture(head);
-                } else {
-                    this.updateStatus('未检测到人', 'no-person');
+                        if (head) {
+                            this.drawHead(head);
+                            this.checkPosture(head);
+                        } else {
+                            this.updateStatus('未检测到人', 'no-person');
+                        }
+                    }
+                } catch (error) {
+                    console.error('检测错误:', error);
                 }
 
                 requestAnimationFrame(() => this.detectPose());
             }
 
-            detectHead(imageData) {
-                // 简化的头部检测算法
+            detectHead() {
+                // 简化的头部检测算法 - 基于亮度变化检测脸部
+                const imageData = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
                 const data = imageData.data;
                 const width = imageData.width;
                 const height = imageData.height;
 
-                // 寻找肤色区域（简单的肤色检测）
+                // 寻找肤色区域
                 const skinPixels = [];
                 
                 for (let i = 0; i < data.length; i += 4) {
@@ -382,7 +408,7 @@
                     const g = data[i + 1];
                     const b = data[i + 2];
                     
-                    // 简单的肤色检测
+                    // 肤色检测
                     if (this.isSkinColor(r, g, b)) {
                         skinPixels.push(i / 4);
                     }
@@ -392,7 +418,7 @@
                     return null;
                 }
 
-                // 计算皮肤区域的边界框
+                // 计算边界框
                 let minX = width, maxX = 0, minY = height, maxY = 0;
                 skinPixels.forEach(pixelIndex => {
                     const x = pixelIndex % width;
@@ -406,7 +432,8 @@
                 const w = maxX - minX;
                 const h = maxY - minY;
 
-                if (w > 20 && h > 30) {
+                // 检查边界框大小是否合理
+                if (w > 30 && h > 40 && w < width * 0.8 && h < height * 0.8) {
                     return {
                         x: minX,
                         y: minY,
@@ -420,22 +447,32 @@
             }
 
             isSkinColor(r, g, b) {
-                // 简单的肤色检测（改进版）
-                return r > 95 && g > 40 && b > 20 &&
-                       r > g && r > b &&
-                       Math.abs(r - g) > 15 &&
-                       r - b > 15;
+                // 改进的肤色检测（支持多种肤色）
+                const rg = r - g;
+                const rb = r - b;
+                
+                return (r > 60 && g > 40 && b > 20) &&
+                       (rg > 10 && rb > -5) &&
+                       Math.max(r, g, b) - Math.min(r, g, b) > 15;
             }
 
             drawHead(head) {
+                // 清除画布并只绘制标记
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
                 // 绘制校准线（蓝色）
                 if (this.calibratedNoseY !== null) {
                     this.ctx.strokeStyle = '#0000FF';
-                    this.ctx.lineWidth = 2;
+                    this.ctx.lineWidth = 3;
                     this.ctx.beginPath();
                     this.ctx.moveTo(0, this.calibratedNoseY);
                     this.ctx.lineTo(this.canvas.width, this.calibratedNoseY);
                     this.ctx.stroke();
+
+                    // 绘制文字标签
+                    this.ctx.fillStyle = '#0000FF';
+                    this.ctx.font = 'bold 16px Arial';
+                    this.ctx.fillText('基准线', 10, this.calibratedNoseY - 10);
                 }
 
                 // 绘制头部中心线（黄色）
@@ -447,7 +484,7 @@
                 this.ctx.stroke();
 
                 // 绘制头部框（绿色或红色）
-                this.ctx.lineWidth = 2;
+                this.ctx.lineWidth = 3;
                 if (this.calibratedNoseY !== null && 
                     (head.centerY - this.calibratedNoseY) > 20) {
                     this.ctx.strokeStyle = '#FF0000'; // 驼背时为红色
