@@ -376,14 +376,16 @@
                         // 绘制视频到画布
                         this.ctx.drawImage(this.video, 0, 0, this.canvas.width, this.canvas.height);
 
-                        // 简单的头部检测
+                        // 头部检测
                         const head = this.detectHead();
 
                         if (head) {
                             this.drawHead(head);
                             this.checkPosture(head);
                         } else {
-                            this.updateStatus('未检测到人', 'no-person');
+                            if (this.calibratedNoseY !== null) {
+                                this.updateStatus('未检测到人', 'no-person');
+                            }
                         }
                     }
                 } catch (error) {
@@ -394,27 +396,46 @@
             }
 
             detectHead() {
-                // 简化的头部检测算法 - 基于亮度变化检测脸部
+                // 改进的头部检测 - 基于多种肤色和亮度检测
                 const imageData = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
                 const data = imageData.data;
                 const width = imageData.width;
                 const height = imageData.height;
 
-                // 寻找肤色区域
+                // 寻找肤色区域 - 使用更宽松的阈值
                 const skinPixels = [];
                 
                 for (let i = 0; i < data.length; i += 4) {
                     const r = data[i];
                     const g = data[i + 1];
                     const b = data[i + 2];
+                    const a = data[i + 3];
                     
-                    // 肤色检测
+                    // 跳过透明像素
+                    if (a < 200) continue;
+                    
+                    // 改进的肤色检测 - 更宽松
                     if (this.isSkinColor(r, g, b)) {
                         skinPixels.push(i / 4);
                     }
                 }
 
-                if (skinPixels.length < 100) {
+                // 如果肤色检测太少，尝试检测亮度较高的区域（可能是脸部）
+                if (skinPixels.length < 50) {
+                    for (let i = 0; i < data.length; i += 4) {
+                        const r = data[i];
+                        const g = data[i + 1];
+                        const b = data[i + 2];
+                        const brightness = (r + g + b) / 3;
+                        
+                        // 检测相对亮的区域
+                        if (brightness > 80 && brightness < 220) {
+                            skinPixels.push(i / 4);
+                        }
+                    }
+                }
+
+                if (skinPixels.length < 200) {
                     return null;
                 }
 
@@ -432,8 +453,8 @@
                 const w = maxX - minX;
                 const h = maxY - minY;
 
-                // 检查边界框大小是否合理
-                if (w > 30 && h > 40 && w < width * 0.8 && h < height * 0.8) {
+                // 检查边界框大小是否合理（放宽条件）
+                if (w > 20 && h > 30 && w < width && h < height && w / h > 0.3 && w / h < 3) {
                     return {
                         x: minX,
                         y: minY,
@@ -447,18 +468,47 @@
             }
 
             isSkinColor(r, g, b) {
-                // 改进的肤色检测（支持多种肤色）
+                // 非常宽松的肤色检测 - 支持各种肤色
+                // 基于多个条件的组合判断
+                
+                // 条件1：基本亮度范围
+                const brightness = (r + g + b) / 3;
+                if (brightness < 40 || brightness > 240) return false;
+                
+                // 条件2：红通道通常是最强的
                 const rg = r - g;
                 const rb = r - b;
                 
-                return (r > 60 && g > 40 && b > 20) &&
-                       (rg > 10 && rb > -5) &&
-                       Math.max(r, g, b) - Math.min(r, g, b) > 15;
+                // 宽松的肤色范围
+                if (r > 50 && g > 30 && b > 20) {
+                    // 红色偏高
+                    if (rg > -20 && rb > -20) {
+                        return true;
+                    }
+                }
+                
+                // 条件3：寻找较为均匀的颜色（典型肤色特征）
+                if (r > 40 && g > 30 && b > 20) {
+                    const variance = Math.abs(r - g) + Math.abs(g - b) + Math.abs(r - b);
+                    if (variance < 100) {
+                        return true;
+                    }
+                }
+                
+                // 条件4：非常浅的颜色（可能是脸部高光）
+                if (r > 180 && g > 140 && b > 100) {
+                    return true;
+                }
+                
+                return false;
             }
 
             drawHead(head) {
-                // 清除画布并只绘制标记
+                // 清除画布
                 this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                
+                // 重新绘制视频
+                this.ctx.drawImage(this.video, 0, 0, this.canvas.width, this.canvas.height);
 
                 // 绘制校准线（蓝色）
                 if (this.calibratedNoseY !== null) {
@@ -526,17 +576,42 @@
 
             calibrate() {
                 const statusValue = document.getElementById('statusValue');
-                statusValue.textContent = '校准中...';
+                statusValue.textContent = '正在扫描中...';
                 
-                setTimeout(() => {
-                    // 这里应该从实时视频中获取头部信息
-                    // 为了演示，我们使用一个默认值
-                    this.calibratedNoseY = this.canvas.height / 2;
+                let foundHead = false;
+                let attempts = 0;
+                const maxAttempts = 30; // 尝试最多30帧
+                
+                const tryCalibrate = () => {
+                    if (attempts >= maxAttempts) {
+                        if (!foundHead) {
+                            statusValue.textContent = '校准失败！请确保能看到您的脸';
+                            statusValue.className = 'status-value';
+                            alert('未能检测到您的脸部。请确保：\n1. 光线充足\n2. 脸部完全在摄像头框内\n3. 摄像头有效');
+                        }
+                        return;
+                    }
+
+                    if (this.video.readyState === this.video.HAVE_ENOUGH_DATA) {
+                        this.ctx.drawImage(this.video, 0, 0, this.canvas.width, this.canvas.height);
+                        const head = this.detectHead();
+                        
+                        if (head) {
+                            foundHead = true;
+                            this.calibratedNoseY = head.centerY;
+                            document.getElementById('calibrationStatus').textContent = '已校准 ✓';
+                            statusValue.textContent = '校准完成！可以开始了';
+                            statusValue.className = 'status-value normal';
+                            console.log('校准成功，基准线Y:', this.calibratedNoseY);
+                            return;
+                        }
+                    }
                     
-                    document.getElementById('calibrationStatus').textContent = '已校准 ✓';
-                    statusValue.textContent = '校准完成！';
-                    statusValue.className = 'status-value normal';
-                }, 500);
+                    attempts++;
+                    setTimeout(tryCalibrate, 100);
+                };
+                
+                tryCalibrate();
             }
 
             recordStatus(status) {
