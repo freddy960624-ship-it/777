@@ -238,6 +238,77 @@
             color: var(--success);
         }
 
+        .metric-row {
+            background: var(--bg-tertiary);
+            padding: 12px 16px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 13px;
+        }
+
+        .metric-label {
+            color: var(--text-secondary);
+        }
+
+        .metric-value {
+            font-weight: 600;
+            color: var(--text-primary);
+            font-variant-numeric: tabular-nums;
+        }
+
+        .slider-group {
+            background: var(--bg-tertiary);
+            padding: 14px 16px;
+            border-radius: 12px;
+        }
+
+        .slider-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+            font-size: 13px;
+        }
+
+        .slider {
+            width: 100%;
+            height: 6px;
+            background: var(--bg-secondary);
+            border-radius: 3px;
+            outline: none;
+            -webkit-appearance: none;
+            cursor: pointer;
+        }
+
+        .slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            background: var(--accent);
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(99, 102, 241, 0.5);
+        }
+
+        .slider::-moz-range-thumb {
+            width: 18px;
+            height: 18px;
+            background: var(--accent);
+            border-radius: 50%;
+            cursor: pointer;
+            border: none;
+        }
+
+        .slider-hint {
+            display: flex;
+            justify-content: space-between;
+            font-size: 10px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
         .stats-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -476,6 +547,23 @@
                 <span class="value" id="calibrationStatus">未校準</span>
             </div>
 
+            <div class="metric-row">
+                <span class="metric-label">即時偏離</span>
+                <span class="metric-value" id="dropValue">-- px</span>
+            </div>
+
+            <div class="slider-group">
+                <div class="slider-header">
+                    <span class="metric-label">靈敏度</span>
+                    <span class="metric-value" id="sensitivityValue">中 (15%)</span>
+                </div>
+                <input type="range" id="sensitivitySlider" min="5" max="30" value="15" step="1" class="slider">
+                <div class="slider-hint">
+                    <span>更敏感</span>
+                    <span>更寬鬆</span>
+                </div>
+            </div>
+
             <div class="stats-grid">
                 <div class="stat-card good">
                     <div class="stat-label">良好姿勢</div>
@@ -558,7 +646,8 @@
                 this.ctx = this.canvas.getContext('2d');
 
                 this.calibratedY = null;
-                this.slouchThreshold = 35;
+                this.calibratedFaceHeight = null;
+                this.sensitivityPercent = 15; // % of face height
                 this.records = { normal: 0, slouch: 0 };
                 this.lastRecordTime = 0;
                 this.slouchStartTime = null;
@@ -569,7 +658,8 @@
                 this.lastFpsTime = performance.now();
 
                 this.smoothedY = null;
-                this.smoothingFactor = 0.3;
+                this.smoothedH = null;
+                this.smoothingFactor = 0.5;
 
                 this.bindUI();
                 this.init();
@@ -579,6 +669,17 @@
                 document.getElementById('calibrateBtn').onclick = () => this.calibrate();
                 document.getElementById('reportBtn').onclick = () => this.showReport();
                 document.getElementById('resetBtn').onclick = () => this.reset();
+
+                const slider = document.getElementById('sensitivitySlider');
+                const label = document.getElementById('sensitivityValue');
+                slider.oninput = () => {
+                    this.sensitivityPercent = parseInt(slider.value, 10);
+                    let tier;
+                    if (this.sensitivityPercent <= 10) tier = '高';
+                    else if (this.sensitivityPercent <= 18) tier = '中';
+                    else tier = '低';
+                    label.textContent = `${tier} (${this.sensitivityPercent}%)`;
+                };
             }
 
             async init() {
@@ -618,6 +719,9 @@
             }
 
             async loadModel() {
+                if (typeof FaceDetection === 'undefined') {
+                    throw new Error('MediaPipe 未載入 - 請檢查網路連線');
+                }
                 this.faceDetection = new FaceDetection({
                     locateFile: (file) =>
                         `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection@0.4/${file}`
@@ -680,23 +784,31 @@
                 const y = (bbox.yCenter * this.canvas.height) - h / 2;
                 const centerY = bbox.yCenter * this.canvas.height;
 
-                // smooth Y to avoid jitter
+                // smooth Y + H to avoid jitter without erasing real movement
                 if (this.smoothedY === null) {
                     this.smoothedY = centerY;
+                    this.smoothedH = h;
                 } else {
                     this.smoothedY = this.smoothedY * (1 - this.smoothingFactor) + centerY * this.smoothingFactor;
+                    this.smoothedH = this.smoothedH * (1 - this.smoothingFactor) + h * this.smoothingFactor;
                 }
 
-                this.lastDetection = { x, y, w, h, centerY: this.smoothedY };
+                this.lastDetection = { x, y, w, h, centerY: this.smoothedY, faceHeight: this.smoothedH };
                 this.draw(this.lastDetection);
-                this.evaluate(this.smoothedY);
+                this.evaluate(this.lastDetection);
 
                 this.ctx.restore();
             }
 
+            currentThreshold() {
+                // adaptive: percentage of face height (use calibrated height if available)
+                const baseH = this.calibratedFaceHeight || (this.lastDetection && this.lastDetection.faceHeight) || 150;
+                return baseH * (this.sensitivityPercent / 100);
+            }
+
             draw(d) {
                 const isSlouching = this.calibratedY !== null &&
-                    (d.centerY - this.calibratedY) > this.slouchThreshold;
+                    (d.centerY - this.calibratedY) > this.currentThreshold();
 
                 // baseline (mirrored draw - already mirrored via CSS)
                 if (this.calibratedY !== null) {
@@ -738,15 +850,21 @@
                 this.ctx.stroke();
             }
 
-            evaluate(centerY) {
+            evaluate(d) {
                 if (this.calibratedY === null) {
+                    document.getElementById('dropValue').textContent = '請先校準';
                     this.setStatus('請進行校準', 'warning', '🎯');
                     return;
                 }
 
-                const drop = centerY - this.calibratedY;
+                const drop = d.centerY - this.calibratedY;
+                const threshold = this.currentThreshold();
+                const dropEl = document.getElementById('dropValue');
+                dropEl.textContent = `${drop >= 0 ? '+' : ''}${drop.toFixed(0)} / ${threshold.toFixed(0)} px`;
+                dropEl.style.color = drop > threshold ? 'var(--danger)' :
+                                     drop > threshold * 0.6 ? 'var(--warning)' : 'var(--success)';
 
-                if (drop > this.slouchThreshold) {
+                if (drop > threshold) {
                     if (this.slouchStartTime === null) {
                         this.slouchStartTime = performance.now();
                     }
@@ -801,10 +919,11 @@
                     return;
                 }
                 this.calibratedY = this.lastDetection.centerY;
+                this.calibratedFaceHeight = this.lastDetection.faceHeight;
                 const card = document.getElementById('calibrationCard');
                 card.classList.add('calibrated');
-                document.getElementById('calibrationStatus').textContent = '已校準 ✓';
-                document.getElementById('tip').innerHTML = '✨ 校準完成！系統會自動監測您的姿勢';
+                document.getElementById('calibrationStatus').textContent = `已校準 ✓ (Y=${this.calibratedY.toFixed(0)})`;
+                document.getElementById('tip').innerHTML = '✨ 校準完成！試著低頭測試是否會警告';
                 this.setStatus('校準成功', 'normal', '✅');
             }
 
@@ -850,10 +969,14 @@
                 if (!confirm('確定要重置所有數據與校準嗎？')) return;
                 this.records = { normal: 0, slouch: 0 };
                 this.calibratedY = null;
+                this.calibratedFaceHeight = null;
                 this.smoothedY = null;
+                this.smoothedH = null;
                 this.slouchStartTime = null;
                 document.getElementById('calibrationCard').classList.remove('calibrated');
                 document.getElementById('calibrationStatus').textContent = '未校準';
+                document.getElementById('dropValue').textContent = '-- px';
+                document.getElementById('dropValue').style.color = 'var(--text-primary)';
                 document.getElementById('tip').innerHTML = '💡 請坐直後點擊「開始校準」設定基準';
                 this.updateStats();
                 this.setStatus('已重置', 'warning', '🔄');
